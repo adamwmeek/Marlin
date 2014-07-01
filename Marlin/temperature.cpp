@@ -34,6 +34,7 @@
 #include "temperature.h"
 #include "watchdog.h"
 
+
 //===========================================================================
 //=============================public variables============================
 //===========================================================================
@@ -179,7 +180,7 @@ void PID_autotune(float temp, int extruder, int ncycles)
   float Kp, Ki, Kd;
   float max = 0, min = 10000;
 
-  if ((extruder >= EXTRUDERS)
+  if ((extruder > EXTRUDERS)
   #if (TEMP_BED_PIN <= -1)
        ||(extruder < 0)
   #endif
@@ -250,7 +251,7 @@ void PID_autotune(float temp, int extruder, int ncycles)
               Kp = 0.6*Ku;
               Ki = 2*Kp/Tu;
               Kd = Kp*Tu/8;
-              SERIAL_PROTOCOLLNPGM(" Classic PID ");
+              SERIAL_PROTOCOLLNPGM(" Clasic PID ");
               SERIAL_PROTOCOLPGM(" Kp: "); SERIAL_PROTOCOLLN(Kp);
               SERIAL_PROTOCOLPGM(" Ki: "); SERIAL_PROTOCOLLN(Ki);
               SERIAL_PROTOCOLPGM(" Kd: "); SERIAL_PROTOCOLLN(Kd);
@@ -258,14 +259,14 @@ void PID_autotune(float temp, int extruder, int ncycles)
               Kp = 0.33*Ku;
               Ki = Kp/Tu;
               Kd = Kp*Tu/3;
-              SERIAL_PROTOCOLLNPGM(" Some overshoot ");
+              SERIAL_PROTOCOLLNPGM(" Some overshoot ")
               SERIAL_PROTOCOLPGM(" Kp: "); SERIAL_PROTOCOLLN(Kp);
               SERIAL_PROTOCOLPGM(" Ki: "); SERIAL_PROTOCOLLN(Ki);
               SERIAL_PROTOCOLPGM(" Kd: "); SERIAL_PROTOCOLLN(Kd);
               Kp = 0.2*Ku;
               Ki = 2*Kp/Tu;
               Kd = Kp*Tu/3;
-              SERIAL_PROTOCOLLNPGM(" No overshoot ");
+              SERIAL_PROTOCOLLNPGM(" No overshoot ")
               SERIAL_PROTOCOLPGM(" Kp: "); SERIAL_PROTOCOLLN(Kp);
               SERIAL_PROTOCOLPGM(" Ki: "); SERIAL_PROTOCOLLN(Ki);
               SERIAL_PROTOCOLPGM(" Kd: "); SERIAL_PROTOCOLLN(Kd);
@@ -306,7 +307,7 @@ void PID_autotune(float temp, int extruder, int ncycles)
       return;
     }
     if(cycles > ncycles) {
-      SERIAL_PROTOCOLLNPGM("PID Autotune finished! Put the last Kp, Ki and Kd constants from above into Configuration.h");
+      SERIAL_PROTOCOLLNPGM("PID Autotune finished! Put the Kp, Ki and Kd constants into Configuration.h");
       return;
     }
     lcd_update();
@@ -416,10 +417,6 @@ void manage_heater()
   for(int e = 0; e < EXTRUDERS; e++) 
   {
 
-  #ifdef THERMAL_RUNAWAY_PROTECTION_PERIOD && THERMAL_RUNAWAY_PROTECTION_PERIOD > 0
-    thermal_runaway_protection(&thermal_runaway_state_machine[e], &thermal_runaway_timer[e], current_temperature[e], target_temperature[e], e, THERMAL_RUNAWAY_PROTECTION_PERIOD, THERMAL_RUNAWAY_PROTECTION_HYSTERESIS);
-  #endif
-
   #ifdef PIDTEMP
     pid_input = current_temperature[e];
 
@@ -453,8 +450,7 @@ void manage_heater()
           pid_output = constrain(target_temperature[e], 0, PID_MAX);
     #endif //PID_OPENLOOP
     #ifdef PID_DEBUG
-    SERIAL_ECHO_START;
-    SERIAL_ECHO(" PID_DEBUG ");
+    SERIAL_ECHO_START(" PIDDEBUG ");
     SERIAL_ECHO(e);
     SERIAL_ECHO(": Input ");
     SERIAL_ECHO(pid_input);
@@ -530,10 +526,6 @@ void manage_heater()
 
   #if TEMP_SENSOR_BED != 0
   
-    #ifdef THERMAL_RUNAWAY_PROTECTION_PERIOD && THERMAL_RUNAWAY_PROTECTION_PERIOD > 0
-      thermal_runaway_protection(&thermal_runaway_bed_state_machine, &thermal_runaway_bed_timer, current_temperature_bed, target_temperature_bed, 9, THERMAL_RUNAWAY_PROTECTION_BED_PERIOD, THERMAL_RUNAWAY_PROTECTION_BED_HYSTERESIS);
-    #endif
-
   #ifdef PIDTEMPBED
     pid_input = current_temperature_bed;
 
@@ -617,7 +609,6 @@ static float analog2temp(int raw, uint8_t e) {
       SERIAL_ERROR((int)e);
       SERIAL_ERRORLNPGM(" - Invalid extruder number !");
       kill();
-      return 0.0;
   } 
   #ifdef HEATER_0_USES_MAX6675
     if (e == 0)
@@ -748,14 +739,17 @@ void tp_init()
 
   #ifdef HEATER_0_USES_MAX6675
     #ifndef SDSUPPORT
-      SET_OUTPUT(MAX_SCK_PIN);
-      WRITE(MAX_SCK_PIN,0);
-    
-      SET_OUTPUT(MAX_MOSI_PIN);
-      WRITE(MAX_MOSI_PIN,1);
-    
-      SET_INPUT(MAX_MISO_PIN);
-      WRITE(MAX_MISO_PIN,1);
+    SET_OUTPUT(MAX_SCK_PIN);
+	WRITE(MAX_SCK_PIN,0);
+
+	SET_OUTPUT(MAX_MOSI_PIN);
+	WRITE(MAX_MOSI_PIN,1);
+
+	SET_INPUT(MAX_MISO_PIN);
+	WRITE(MAX_MISO_PIN,1);
+
+	SET_OUTPUT(MAX6675_SS);
+	WRITE(MAX6675_SS,1);
     #endif
     
     SET_OUTPUT(MAX6675_SS);
@@ -904,66 +898,6 @@ void setWatch()
 #endif 
 }
 
-#ifdef THERMAL_RUNAWAY_PROTECTION_PERIOD && THERMAL_RUNAWAY_PROTECTION_PERIOD > 0
-void thermal_runaway_protection(int *state, unsigned long *timer, float temperature, float target_temperature, int heater_id, int period_seconds, int hysteresis_degc)
-{
-/*
-      SERIAL_ECHO_START;
-      SERIAL_ECHO("Thermal Thermal Runaway Running. Heater ID:");
-      SERIAL_ECHO(heater_id);
-      SERIAL_ECHO(" ;  State:");
-      SERIAL_ECHO(*state);
-      SERIAL_ECHO(" ;  Timer:");
-      SERIAL_ECHO(*timer);
-      SERIAL_ECHO(" ;  Temperature:");
-      SERIAL_ECHO(temperature);
-      SERIAL_ECHO(" ;  Target Temp:");
-      SERIAL_ECHO(target_temperature);
-      SERIAL_ECHOLN("");    
-*/
-  if ((target_temperature == 0) || thermal_runaway)
-  {
-    *state = 0;
-    *timer = 0;
-    return;
-  }
-  switch (*state)
-  {
-    case 0: // "Heater Inactive" state
-      if (target_temperature > 0) *state = 1;
-      break;
-    case 1: // "First Heating" state
-      if (temperature >= target_temperature) *state = 2;
-      break;
-    case 2: // "Temperature Stable" state
-      if (temperature >= (target_temperature - hysteresis_degc))
-      {
-        *timer = millis();
-      } 
-      else if ( (millis() - *timer) > period_seconds*1000)
-      {
-        SERIAL_ERROR_START;
-        SERIAL_ERRORLNPGM("Thermal Runaway, system stopped! Heater_ID: ");
-        SERIAL_ERRORLN((int)heater_id);
-        LCD_ALERTMESSAGEPGM("THERMAL RUNAWAY");
-        thermal_runaway = true;
-        while(1)
-        {
-          disable_heater();
-          disable_x();
-          disable_y();
-          disable_z();
-          disable_e0();
-          disable_e1();
-          disable_e2();
-          manage_heater();
-          lcd_update();
-        }
-      }
-      break;
-  }
-}
-#endif
 
 void disable_heater()
 {
@@ -978,7 +912,7 @@ void disable_heater()
    #endif
   #endif
      
-  #if defined(TEMP_1_PIN) && TEMP_1_PIN > -1 && EXTRUDERS > 1
+  #if defined(TEMP_1_PIN) && TEMP_1_PIN > -1
     target_temperature[1]=0;
     soft_pwm[1]=0;
     #if defined(HEATER_1_PIN) && HEATER_1_PIN > -1 
@@ -986,7 +920,7 @@ void disable_heater()
     #endif
   #endif
       
-  #if defined(TEMP_2_PIN) && TEMP_2_PIN > -1 && EXTRUDERS > 2
+  #if defined(TEMP_2_PIN) && TEMP_2_PIN > -1
     target_temperature[2]=0;
     soft_pwm[2]=0;
     #if defined(HEATER_2_PIN) && HEATER_2_PIN > -1  
@@ -1042,62 +976,152 @@ void bed_max_temp_error(void) {
   Stop();
   #endif
 }
-
 #ifdef HEATER_0_USES_MAX6675
 #define MAX6675_HEAT_INTERVAL 250
-long max6675_previous_millis = -HEAT_INTERVAL;
+long max6675_previous_millis = -MAX6675_HEAT_INTERVAL;
 int max6675_temp = 2000;
 
-int read_max6675()
-{
-  if (millis() - max6675_previous_millis < MAX6675_HEAT_INTERVAL) 
-    return max6675_temp;
-  
-  max6675_previous_millis = millis();
-  max6675_temp = 0;
-    
-  #ifdef	PRR
-    PRR &= ~(1<<PRSPI);
-  #elif defined PRR0
-    PRR0 &= ~(1<<PRSPI);
-  #endif
-  
-  SPCR = (1<<MSTR) | (1<<SPE) | (1<<SPR0);
-  
-  // enable TT_MAX6675
-  WRITE(MAX6675_SS, 0);
-  
-  // ensure 100ns delay - a bit extra is fine
-  asm("nop");//50ns on 20Mhz, 62.5ns on 16Mhz
-  asm("nop");//50ns on 20Mhz, 62.5ns on 16Mhz
-  
-  // read MSB
-  SPDR = 0;
-  for (;(SPSR & (1<<SPIF)) == 0;);
-  max6675_temp = SPDR;
-  max6675_temp <<= 8;
-  
-  // read LSB
-  SPDR = 0;
-  for (;(SPSR & (1<<SPIF)) == 0;);
-  max6675_temp |= SPDR;
-  
-  // disable TT_MAX6675
-  WRITE(MAX6675_SS, 1);
+//~ int read_max6675()
+//~ {
+  //~ if (millis() - max6675_previous_millis < MAX6675_HEAT_INTERVAL) 
+    //~ return max6675_temp;
+  //~ 
+  //~ max6675_previous_millis = millis();
+  //~ max6675_temp = 0;
+    //~ 
+  //~ #ifdef	PRR
+    //~ PRR &= ~(1<<PRSPI);
+  //~ #elif defined PRR0
+    //~ PRR0 &= ~(1<<PRSPI);
+  //~ #endif
+  //~ 
+  //~ SPCR = (1<<MSTR) | (1<<SPE) | (1<<SPR0);
+  //~ 
+  //~ // enable TT_MAX6675
+  //~ WRITE(MAX6675_SS, 0);
+  //~ 
+  //~ // ensure 100ns delay - a bit extra is fine
+  //~ asm("nop");//50ns on 20Mhz, 62.5ns on 16Mhz
+  //~ asm("nop");//50ns on 20Mhz, 62.5ns on 16Mhz
+  //~ 
+  //~ // read MSB
+  //~ SPDR = 0;
+  //~ for (;(SPSR & (1<<SPIF)) == 0;);
+  //~ max6675_temp = SPDR;
+  //~ max6675_temp <<= 8;
+  //~ 
+  //~ // read LSB
+  //~ SPDR = 0;
+  //~ for (;(SPSR & (1<<SPIF)) == 0;);
+  //~ max6675_temp |= SPDR;
+  //~ 
+  //~ // disable TT_MAX6675
+  //~ WRITE(MAX6675_SS, 1);
+//~ 
+  //~ if (max6675_temp & 4) 
+  //~ {
+    //~ // thermocouple open
+    //~ max6675_temp = 2000;
+  //~ }
+  //~ else 
+  //~ {
+    //~ max6675_temp = max6675_temp >> 3;
+  //~ }
+//~ 
+  //~ return max6675_temp;
+//~ }
 
-  if (max6675_temp & 4) 
-  {
-    // thermocouple open
-    max6675_temp = 2000;
-  }
-  else 
-  {
-    max6675_temp = max6675_temp >> 3;
-  }
+//BELOW THIS LINE IS THE CORRECT MAX6675 CODE
 
-  return max6675_temp;
-}
+/*!
+Read the MAX6675 thermocouple using the SPI bus.
+
+The MAX6675 performs cold-junction compensation and digitizes the signal from a type-K thermocouple.
+The data is output in a 12-bit resolution, SPIâ„¢-compatible, read-only format.
+This converter resolves temperatures to 0.25Â°C, allows readings as high as +1024Â°C, and exhibits thermocouple accuracy of 8LSBs for temperatures ranging from 0Â°C to +700Â°C.
+
+This function is called every 8msec by the timer isr.
+
+Relevant MAX6675 timing:
+CSB Fall to SCK Rise tCSS CL = 10pF 100 ns minimum.
+CSB Fall to Output Enable tDV CL = 10pF 100 ns maximum.
+CSB Rise to Output Disable tTR CL = 10pF 100 ns
+SCK Fall to Output Data Valid tDO CL = 10pF 100 ns
+*/
+int read_max6675(){
+	//See if it's time to update the temperature reading.
+	if (millis() - max6675_previous_millis < MAX6675_HEAT_INTERVAL) {
+		return(max6675_temp); // Don't change the value. Just return.
+	}else{ 
+		//Time to take the reading.
+		//Reset the previous_millis.
+		max6675_previous_millis = millis();
+	}
+	
+	//The Power Reduction SPI bit, PRSPI must be written to zero to enable the SPI module.
+	#ifdef PRR
+	PRR &= ~(1<<PRSPI);
+	#elif defined PRR0
+	PRR0 &= ~(1<<PRSPI);
+	#endif
+
+	SPCR = (1<<MSTR) | (1<<SPE) | (1<<SPR0);
+	//The SPI Master initiates the communication cycle when pulling low the Slave Select SS pin of the desired Slave.
+	WRITE(MAX6675_SS, 0); // Enable TT_MAX6675 Slave Select.
+	#if (0)
+	//I measured 610usec of delay between SS and SCLK without any delay on a 16Mhz Mega running a 1Mhz SPI.
+	//NO DELAY IS REQUIRED AND ADDING UNREQUIRED DELAY IN AN INTERRUPT IS UNEXCUSABLE.
+	delayMicroseconds(1); // Ensure 100ns delay after slave select before clock starts. 
+	#endif
+	
+	/*
+	First bit from MAX is available within 100nsec of slave select going low and clock starting.
+	All bits will be clocked in within 16*sclk+100nsec.
+	The SPI system is double buffered in the receive direction.
+	This means that the first character must be read from the SPI Data Register(SPDR) before the next character has been completely shifted in.
+	Otherwise, the first byte is lost.
+	*/
+
+	// Read MSB.
+	SPDR = 0; // Starts the SPI clock generator.
+	for (;(SPSR & (1<<SPIF)) == 0;);
+	max6675_temp = SPDR<<8;
+
+	// Read LSB, we don't need to read the SPDR.
+	SPDR = 0;
+	for (;(SPSR & (1<<SPIF)) == 0;);
+	max6675_temp |= SPDR;
+
+	WRITE(MAX6675_SS, 1); // Disable TT_MAX6675 slave select.
+	//MAX6675 gets off the SPI bus within 100nsec of slave select going high.
+	
+	//If the MAX6675 isn't connected it could clock in all ones(MISO high).
+
+	//Check that the high bit and device present bits are zeros indicating the MAX6675 is present.
+	if (0 == (max6675_temp & 0x8002)){ 
+		//Check for Open Thermocouple condition.
+		//Bit D2 is normally low and goes high if the thermocouple input is open. 
+		//In order to allow the operation of the open thermocouple detector, T- must be grounded.
+		if (max6675_temp & 4) {
+			max6675_temp = 2000; // thermocouple open
+			WRITE(29, 1);
+		}else { 
+		
+			//Bottom three bits are open indicator, device id, three state bits.
+			//Shift these bits out of the returned value.
+			max6675_temp >>=3;
+		}
+	} 
+	else {
+		//We did NOT get a valid reading from the MAX6675.
+		max6675_temp = 2000; // MAX6675 not present.
+		WRITE(28, 1);
+	}
+	
+	return max6675_temp;	
+} 
 #endif
+
 
 
 // Timer 0 is shared with millies
@@ -1260,7 +1284,7 @@ ISR(TIMER0_COMPB_vect)
 //      break;
   }
     
-  if(temp_count >= OVERSAMPLENR) // 8 * 16 * 1/(16000000/64/256)  = 131ms.
+  if(temp_count >= 16) // 8 ms * 16 = 128ms.
   {
     if (!temp_meas_ready) //Only update the raw values if they have been read. Else we could be updating them during reading.
     {
